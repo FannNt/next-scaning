@@ -1,26 +1,69 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Groq } from 'groq-sdk';
+import cloudinary from '@/lib/cloudinary';
 
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
-    const file = formData.get('file') as Blob;
+    const file = formData.get('file') as File;
     
     if (!file) {
       return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
     }
 
-    // Convert file to base64
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
+    
+    // Convert to base64
     const base64Image = buffer.toString('base64');
+    const uploadResponse = await new Promise((resolve, reject) => {
+      cloudinary.uploader.upload(
+        `data:image/jpeg;base64,${base64Image}`,
+        {
+          folder: 'recycling-scanner',
+        },
+        (error, result) => {
+          if (error) reject(error);
+          resolve(result);
+        }
+      );
+    });
 
-    // Use Groq with Llava model
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const imageUrl = (uploadResponse as any).secure_url;
+
+    // Use Groq with the Cloudinary URL
     const groq = new Groq({
       apiKey: process.env.GROQ_API_KEY
     });
 
-    // First analyze the image
+    // First analyze for authenticity
+    const authenticityCheck = await groq.chat.completions.create({
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "ONLY analyze if this image appears to be authentic or AI-generated. Respond in this format:\nAuthenticity: [Real Photo/AI-Generated/Edited]\nConfidence: [percentage]\nReason: [brief explanation of key indicators]"
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: imageUrl
+              }
+            }
+          ]
+        }
+      ],
+      model: "llama-3.2-90b-vision-preview",
+      temperature: 0.3,
+      max_tokens: 150
+    });
+
+    const authenticityResult = authenticityCheck.choices[0]?.message?.content || '';
+
+    // Then proceed with the regular recycling analysis
     const imageAnalysis = await groq.chat.completions.create({
       messages: [
         {
@@ -33,7 +76,7 @@ export async function POST(request: NextRequest) {
             {
               type: "image_url",
               image_url: {
-                url: `data:image/jpeg;base64,${base64Image}`
+                url: imageUrl
               }
             }
           ]
@@ -46,7 +89,7 @@ export async function POST(request: NextRequest) {
 
     const itemsList = imageAnalysis.choices[0]?.message?.content || '';
 
-    // Then get recycling suggestions
+    // get recycling suggestions
     const suggestions = await groq.chat.completions.create({
       messages: [
         {
@@ -64,8 +107,10 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({ 
+      authenticity: authenticityResult,
       items: itemsList,
-      result: suggestions.choices[0]?.message?.content
+      result: suggestions.choices[0]?.message?.content,
+      imageUrl
     });
 
   } catch (error) {

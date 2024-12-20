@@ -8,6 +8,7 @@ const ImageUpload = () => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string>('');
   const [error, setError] = useState<string>('');
+  const [authenticity, setAuthenticity] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
@@ -16,18 +17,15 @@ const ImageUpload = () => {
       setLoading(true);
       setError('');
       
-      // Create FormData
       const formData = new FormData();
       formData.append('file', file);
 
-      // Create preview
       const reader = new FileReader();
       reader.onload = (e) => {
         setImage(e.target?.result as string);
       };
       reader.readAsDataURL(file);
 
-      // Send to API
       const response = await fetch('/api/analyze', {
         method: 'POST',
         body: formData,
@@ -39,6 +37,7 @@ const ImageUpload = () => {
 
       const data = await response.json();
       setResult(data.result || 'No result returned');
+      setAuthenticity(data.authenticity || 'No authenticity data');
       
     } catch (error) {
       console.error('Error:', error);
@@ -58,7 +57,6 @@ const ImageUpload = () => {
   return (
     <div className="max-w-2xl mx-auto p-4">
       <div className="grid grid-cols-2 gap-4 mb-4">
-        {/* Camera Option */}
         <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900">
           <input
             ref={cameraInputRef}
@@ -75,7 +73,6 @@ const ImageUpload = () => {
           <span>Take Photo</span>
         </label>
 
-        {/* Gallery Option */}
         <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900">
           <input
             ref={fileInputRef}
@@ -116,9 +113,16 @@ const ImageUpload = () => {
       )}
       
       {result && (
-        <div className="mt-4 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg">
-          <h3 className="font-bold mb-2">Analysis Result:</h3>
-          <pre className="whitespace-pre-wrap">{result}</pre>
+        <div className="mt-4 space-y-4">
+          <div className="p-4 bg-gray-100 dark:bg-gray-800 rounded-lg">
+            <h3 className="font-bold mb-2">Image Authenticity:</h3>
+            <pre className="whitespace-pre-wrap">{authenticity}</pre>
+          </div>
+          
+          <div className="p-4 bg-gray-100 dark:bg-gray-800 rounded-lg">
+            <h3 className="font-bold mb-2">Analysis Result:</h3>
+            <pre className="whitespace-pre-wrap">{result}</pre>
+          </div>
         </div>
       )}
     </div>
